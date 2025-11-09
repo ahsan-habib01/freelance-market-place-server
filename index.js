@@ -44,6 +44,14 @@ async function run() {
       res.send(result);
     });
 
+    // ✅ Add Job
+    app.post('/jobs', async (req, res) => {
+      const job = req.body;
+      job.postedAt = new Date(); // Auto add date/time
+      const result = await jobsCollection.insertOne(job);
+      res.send(result);
+    });
+
     await client.db('admin').command({ ping: 1 });
     console.log(
       '✅ Pinged your deployment. You successfully connected to MongoDB!'
