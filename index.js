@@ -97,6 +97,22 @@ async function run() {
       }
     });
 
+    // ✅ Delete Accepted Job (for DONE or CANCEL)
+    app.delete('/accepted-jobs/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await acceptedCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (error) {
+        console.error('Error deleting job:', error);
+        res
+          .status(500)
+          .send({ message: 'Failed to delete accepted job', error });
+      }
+    });
+
     //
     await client.db('admin').command({ ping: 1 });
     console.log(
