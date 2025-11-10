@@ -97,6 +97,36 @@ async function run() {
       }
     });
 
+    // -------------------------------
+    // ✅ Update Job
+    // -------------------------------
+    app.put('/updateJob/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedJob = req.body;
+        const result = await jobsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedJob }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to update job', error });
+      }
+    });
+
+    // ✅ Delete Job
+    app.delete('/deleteJob/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await jobsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to delete job', error });
+      }
+    });
+
     // ✅ Delete Accepted Job (for DONE or CANCEL)
     app.delete('/accepted-jobs/:id', async (req, res) => {
       try {
