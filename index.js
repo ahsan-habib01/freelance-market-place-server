@@ -25,6 +25,7 @@ async function run() {
   try {
     const db = client.db('freelify-db');
     const jobsCollection = db.collection('jobs');
+    const acceptedCollection = db.collection('accepted-jobs');
 
     app.get('/', (req, res) => {
       res.send('Freelify Server is Running Smoothly...');
@@ -63,12 +64,37 @@ async function run() {
       res.send(result);
     });
 
-
     // ✅ Get My Added Jobs
     app.get('/myAddedJobs', async (req, res) => {
       const email = req.query.email;
       const result = await jobsCollection.find({ userEmail: email }).toArray();
       res.send(result);
+    });
+
+    // ✅ Accept Job
+    app.post('/accepted-jobs', async (req, res) => {
+      try {
+        const task = req.body;
+        const result = await acceptedCollection.insertOne(task);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to accept job', error });
+      }
+    });
+
+    // ✅ Get My Accepted Jobs
+    app.get('/my-accepted-jobs', async (req, res) => {
+      try {
+        const email = req.query.email;
+        const tasks = await acceptedCollection
+          .find({ userEmail: email })
+          .toArray();
+        res.send(tasks);
+      } catch (error) {
+        res
+          .status(500)
+          .send({ message: 'Failed to fetch accepted tasks', error });
+      }
     });
 
     //
