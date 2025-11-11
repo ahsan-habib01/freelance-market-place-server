@@ -31,7 +31,7 @@ async function run() {
       res.send('Freelify Server is Running Smoothly...');
     });
 
-    // ✅ Get All Jobs
+    // Get All Jobs
     app.get('/jobs', async (req, res) => {
       const sort = req.query.sort; // 'asc' or 'desc'
       const order = sort === 'asc' ? 1 : -1;
@@ -42,7 +42,7 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ Get Single Job by ID
+    // Get Single Job by ID
     app.get('/jobs/:id', async (req, res) => {
       const id = req.params.id;
       const objectId = new ObjectId(id);
@@ -50,7 +50,7 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ Add Job
+    // Add Job
     app.post('/jobs', async (req, res) => {
       const job = req.body;
       job.postedAt = new Date(); // Auto add date/time
@@ -58,7 +58,7 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ Latest 6 Job
+    // Latest 6 Job
     app.get('/latest-jobs', async (req, res) => {
       const result = await jobsCollection
         .find()
@@ -69,14 +69,14 @@ async function run() {
       res.send(result);
     });
 
-    // ✅ Get My Added Jobs
+    // Get My Added Jobs
     app.get('/myAddedJobs', async (req, res) => {
       const email = req.query.email;
       const result = await jobsCollection.find({ userEmail: email }).toArray();
       res.send(result);
     });
 
-    // ✅ Accept Job
+    // Accept Job
     app.post('/accepted-jobs', async (req, res) => {
       try {
         const task = req.body;
@@ -87,7 +87,7 @@ async function run() {
       }
     });
 
-    // ✅ Get My Accepted Jobs
+    // Get My Accepted Jobs
     app.get('/my-accepted-jobs', async (req, res) => {
       try {
         const email = req.query.email;
@@ -102,9 +102,7 @@ async function run() {
       }
     });
 
-    // -------------------------------
-    // ✅ Update Job
-    // -------------------------------
+    // Update Job
     app.put('/updateJob/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -119,7 +117,7 @@ async function run() {
       }
     });
 
-    // ✅ Delete Job
+    // Delete Job
     app.delete('/deleteJob/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -132,7 +130,7 @@ async function run() {
       }
     });
 
-    // ✅ Delete Accepted Job (for DONE or CANCEL)
+    // Delete Accepted Job (for DONE or CANCEL)
     app.delete('/accepted-jobs/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -149,9 +147,9 @@ async function run() {
     });
 
     //
-    await client.db('admin').command({ ping: 1 });
+    // await client.db('admin').command({ ping: 1 });
     console.log(
-      '✅ Pinged your deployment. You successfully connected to MongoDB!'
+      'Pinged your deployment. You successfully connected to MongoDB!'
     );
   } finally {
     // await client.close();
@@ -160,5 +158,5 @@ async function run() {
 run().catch(console.dir);
 
 app.listen(port, () => {
-  console.log(`🚀 Freelify Server running on port ${port}`);
+  console.log(`Freelify Server running on port ${port}`);
 });
