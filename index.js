@@ -33,7 +33,12 @@ async function run() {
 
     // ✅ Get All Jobs
     app.get('/jobs', async (req, res) => {
-      const result = await jobsCollection.find().toArray();
+      const sort = req.query.sort; // 'asc' or 'desc'
+      const order = sort === 'asc' ? 1 : -1;
+      const result = await jobsCollection
+        .find()
+        .sort({ postedAt: order })
+        .toArray();
       res.send(result);
     });
 
