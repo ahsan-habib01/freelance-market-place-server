@@ -77,88 +77,167 @@ async function run() {
       try {
         const { name, email, password, photoURL } = req.body;
 
-        // Check if user already exists
-        const existingUser = await usersCollection.findOne({ email });
-        if (existingUser) {
-          return res.status(400).send({ message: 'User already exists' });
+        // 1. Validate input
+        if (!name || !email || !password) {
+          return res.status(400).json({
+            success: false,
+            message: 'Name, email, and password are required',
+          });
         }
 
-        // Hash password
+        // 2. Normalize email (CRITICAL for duplicate detection)
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // 3. Check if user already exists
+        const existingUser = await User.findOne({ email: normalizedEmail });
+
+        if (existingUser) {
+          console.log('❌ Email already exists:', normalizedEmail);
+          return res.status(400).json({
+            success: false,
+            message: 'This email is already registered. Please login instead.',
+          });
+        }
+
+        console.log('✅ Email available:', normalizedEmail);
+
+        // 4. Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Create user
-        const newUser = {
-          name,
-          email,
+        // 5. Create new user
+        const newUser = new User({
+          name: name.trim(),
+          email: normalizedEmail,
           password: hashedPassword,
           photoURL: photoURL || '',
-          role: 'user', // Default role
+          role: 'user', // default role
           createdAt: new Date(),
-          bio: '',
-          phone: '',
-          location: '',
-          skills: [],
-        };
-
-        const result = await usersCollection.insertOne(newUser);
-
-        // Generate JWT token
-        const token = jwt.sign(
-          { email: newUser.email, role: newUser.role },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
-
-        res.send({
-          success: true,
-          token,
-          user: { name, email, photoURL, role: 'user' },
         });
-      } catch (error) {
-        res
-          .status(500)
-          .send({ message: 'Registration failed', error: error.message });
-      }
-    });
 
-    // Login User
-    app.post('/auth/login', async (req, res) => {
-      try {
-        const { email, password } = req.body;
+        await newUser.save();
+        console.log('✅ User saved to MongoDB:', newUser.email);
 
-        // Find user
-        const user = await usersCollection.findOne({ email });
-        if (!user) {
-          return res.status(404).send({ message: 'User not found' });
-        }
-
-        // Verify password
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-          return res.status(401).send({ message: 'Invalid credentials' });
-        }
-
-        // Generate JWT token
+        // 6. Generate JWT token
         const token = jwt.sign(
-          { email: user.email, role: user.role },
-          JWT_SECRET,
+          {
+            userId: newUser._id,
+            email: newUser.email,
+            role: newUser.role,
+          },
+          process.env.JWT_SECRET || 'your-secret-key-here',
           { expiresIn: '7d' }
         );
 
-        res.send({
+        // 7. Send success response
+        return res.status(201).json({
           success: true,
+          message: 'User registered successfully',
           token,
           user: {
-            name: user.name,
-            email: user.email,
-            photoURL: user.photoURL,
-            role: user.role,
+            id: newUser._id,
+            name: newUser.name,
+            email: newUser.email,
+            photoURL: newUser.photoURL,
+            role: newUser.role,
           },
         });
       } catch (error) {
-        res.status(500).send({ message: 'Login failed', error: error.message });
+        console.error('❌ Registration error:', error);
+
+        // Handle MongoDB duplicate key error (backup safety net)
+        if (error.code === 11000) {
+          return res.status(400).json({
+            success: false,
+            message: 'This email is already registered',
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: 'Server error during registration',
+          error:
+            process.env.NODE_ENV === 'development' ? error.message : undefined,
+        });
       }
     });
+
+
+    // Login User
+   app.post('/auth/login', async (req, res) => {
+     try {
+       const { email, password } = req.body;
+
+       // 1. Validate input
+       if (!email || !password) {
+         return res.status(400).json({
+           success: false,
+           message: 'Email and password are required',
+         });
+       }
+
+       // 2. Normalize email
+       const normalizedEmail = email.toLowerCase().trim();
+       console.log('🔵 Login attempt for:', normalizedEmail);
+
+       // 3. Find user by email
+       const user = await User.findOne({ email: normalizedEmail });
+
+       if (!user) {
+         console.log('❌ User not found:', normalizedEmail);
+         return res.status(404).json({
+           success: false,
+           message: 'User not found. Please register first.',
+         });
+       }
+
+       // 4. Compare password
+       const isPasswordValid = await bcrypt.compare(password, user.password);
+
+       if (!isPasswordValid) {
+         console.log('❌ Invalid password for:', normalizedEmail);
+         return res.status(401).json({
+           success: false,
+           message: 'Invalid email or password',
+         });
+       }
+
+       console.log('✅ Login successful:', normalizedEmail);
+
+       // 5. Generate JWT token
+       const token = jwt.sign(
+         {
+           userId: user._id,
+           email: user.email,
+           role: user.role,
+         },
+         process.env.JWT_SECRET || 'your-secret-key-here',
+         { expiresIn: '7d' }
+       );
+
+       // 6. Send success response
+       return res.status(200).json({
+         success: true,
+         message: 'Login successful',
+         token,
+         user: {
+           id: user._id,
+           name: user.name,
+           email: user.email,
+           photoURL: user.photoURL,
+           role: user.role,
+         },
+       });
+     } catch (error) {
+       console.error('❌ Login error:', error);
+       return res.status(500).json({
+         success: false,
+         message: 'Server error during login',
+         error:
+           process.env.NODE_ENV === 'development' ? error.message : undefined,
+       });
+     }
+   });
+
 
     // Get Current User Profile
     app.get('/auth/me', verifyToken, async (req, res) => {
@@ -172,6 +251,43 @@ async function run() {
         res
           .status(500)
           .send({ message: 'Failed to fetch user', error: error.message });
+      }
+    });
+
+    // Check if email exists endpoint
+    app.post('/auth/check-email', async (req, res) => {
+      try {
+        const { email } = req.body;
+
+        if (!email) {
+          return res.status(400).json({
+            exists: false,
+            message: 'Email is required',
+          });
+        }
+
+        // Check if user exists in database
+        const existingUser = await User.findOne({
+          email: email.toLowerCase().trim(),
+        });
+
+        if (existingUser) {
+          return res.status(200).json({
+            exists: true,
+            message: 'Email is already registered',
+          });
+        }
+
+        return res.status(200).json({
+          exists: false,
+          message: 'Email is available',
+        });
+      } catch (error) {
+        console.error('Check email error:', error);
+        return res.status(500).json({
+          exists: false,
+          message: 'Server error',
+        });
       }
     });
 
@@ -221,73 +337,72 @@ async function run() {
 
     // Get All Jobs with Search, Filter, Sort, Pagination
     // Backend route for /jobs endpoint
-// Add this to your jobs routes file (e.g., jobsRoutes.js)
+    // Add this to your jobs routes file (e.g., jobsRoutes.js)
 
-app.get('/jobs', async (req, res) => {
-  try {
-    const {
-      page = 1,
-      limit = 12,
-      sort = 'desc',
-      search = '',
-      category = '',
-      location = ''
-    } = req.query;
+    app.get('/jobs', async (req, res) => {
+      try {
+        const {
+          page = 1,
+          limit = 12,
+          sort = 'desc',
+          search = '',
+          category = '',
+          location = '',
+        } = req.query;
 
-    // Convert to numbers
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
+        // Convert to numbers
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const skip = (pageNum - 1) * limitNum;
 
-    // Build filter object
-    const filter = {};
+        // Build filter object
+        const filter = {};
 
-    // Search filter - searches in title, description, and skills
-    if (search) {
-      filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { skills: { $regex: search, $options: 'i' } }
-      ];
-    }
+        // Search filter - searches in title, description, and skills
+        if (search) {
+          filter.$or = [
+            { title: { $regex: search, $options: 'i' } },
+            { description: { $regex: search, $options: 'i' } },
+            { skills: { $regex: search, $options: 'i' } },
+          ];
+        }
 
-    // Category filter
-    if (category) {
-      filter.category = category;
-    }
+        // Category filter
+        if (category) {
+          filter.category = category;
+        }
 
-    // Location filter
-    if (location) {
-      filter.location = location;
-    }
+        // Location filter
+        if (location) {
+          filter.location = location;
+        }
 
-    // Sort order (by createdAt or posted date)
-    const sortOrder = sort === 'asc' ? 1 : -1;
-    const sortBy = { createdAt: sortOrder };
+        // Sort order (by createdAt or posted date)
+        const sortOrder = sort === 'asc' ? 1 : -1;
+        const sortBy = { createdAt: sortOrder };
 
-    // Get total count for pagination
-    const total = await jobsCollection.countDocuments(filter);
+        // Get total count for pagination
+        const total = await jobsCollection.countDocuments(filter);
 
-    // Get paginated jobs
-    const jobs = await jobsCollection
-      .find(filter)
-      .sort(sortBy)
-      .skip(skip)
-      .limit(limitNum)
-      .toArray();
+        // Get paginated jobs
+        const jobs = await jobsCollection
+          .find(filter)
+          .sort(sortBy)
+          .skip(skip)
+          .limit(limitNum)
+          .toArray();
 
-    res.send({
-      jobs,
-      total,
-      currentPage: pageNum,
-      totalPages: Math.ceil(total / limitNum)
+        res.send({
+          jobs,
+          total,
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+        });
+      } catch (error) {
+        console.error('Error fetching jobs:', error);
+        res.status(500).send({ error: 'Failed to fetch jobs' });
+      }
     });
-
-  } catch (error) {
-    console.error('Error fetching jobs:', error);
-    res.status(500).send({ error: 'Failed to fetch jobs' });
-  }
-});
 
     // Get Single Job by ID (Public)
     app.get('/jobs/:id', async (req, res) => {
@@ -317,12 +432,10 @@ app.get('/jobs', async (req, res) => {
           .toArray();
         res.send(jobs);
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            message: 'Failed to fetch latest jobs',
-            error: error.message,
-          });
+        res.status(500).send({
+          message: 'Failed to fetch latest jobs',
+          error: error.message,
+        });
       }
     });
 
@@ -342,12 +455,10 @@ app.get('/jobs', async (req, res) => {
 
         res.send(relatedJobs);
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            message: 'Failed to fetch related jobs',
-            error: error.message,
-          });
+        res.status(500).send({
+          message: 'Failed to fetch related jobs',
+          error: error.message,
+        });
       }
     });
 
@@ -466,12 +577,10 @@ app.get('/jobs', async (req, res) => {
           .toArray();
         res.send(tasks);
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            message: 'Failed to fetch accepted jobs',
-            error: error.message,
-          });
+        res.status(500).send({
+          message: 'Failed to fetch accepted jobs',
+          error: error.message,
+        });
       }
     });
 
@@ -532,12 +641,10 @@ app.get('/jobs', async (req, res) => {
         const categories = await categoriesCollection.find().toArray();
         res.send(categories);
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            message: 'Failed to fetch categories',
-            error: error.message,
-          });
+        res.status(500).send({
+          message: 'Failed to fetch categories',
+          error: error.message,
+        });
       }
     });
 
@@ -666,12 +773,10 @@ app.get('/jobs', async (req, res) => {
 
         res.send(jobsByMonth);
       } catch (error) {
-        res
-          .status(500)
-          .send({
-            message: 'Failed to fetch chart data',
-            error: error.message,
-          });
+        res.status(500).send({
+          message: 'Failed to fetch chart data',
+          error: error.message,
+        });
       }
     });
 
@@ -702,12 +807,10 @@ app.get('/jobs', async (req, res) => {
             recentJobs,
           });
         } catch (error) {
-          res
-            .status(500)
-            .send({
-              message: 'Failed to fetch admin stats',
-              error: error.message,
-            });
+          res.status(500).send({
+            message: 'Failed to fetch admin stats',
+            error: error.message,
+          });
         }
       }
     );
@@ -752,12 +855,10 @@ app.get('/jobs', async (req, res) => {
             userGrowth,
           });
         } catch (error) {
-          res
-            .status(500)
-            .send({
-              message: 'Failed to fetch chart data',
-              error: error.message,
-            });
+          res.status(500).send({
+            message: 'Failed to fetch chart data',
+            error: error.message,
+          });
         }
       }
     );
