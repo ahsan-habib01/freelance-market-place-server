@@ -220,80 +220,74 @@ async function run() {
     // ==================== JOB ROUTES (PUBLIC & PROTECTED) ====================
 
     // Get All Jobs with Search, Filter, Sort, Pagination
-    app.get('/jobs', async (req, res) => {
-      try {
-        const {
-          search,
-          category,
-          minPrice,
-          maxPrice,
-          minDeadline,
-          maxDeadline,
-          sort = 'desc',
-          page = 1,
-          limit = 10,
-        } = req.query;
+    // Backend route for /jobs endpoint
+// Add this to your jobs routes file (e.g., jobsRoutes.js)
 
-        const query = {};
+app.get('/jobs', async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 12,
+      sort = 'desc',
+      search = '',
+      category = '',
+      location = ''
+    } = req.query;
 
-        // Search by title or description
-        if (search) {
-          query.$or = [
-            { title: { $regex: search, $options: 'i' } },
-            { description: { $regex: search, $options: 'i' } },
-          ];
-        }
+    // Convert to numbers
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
-        // Filter by category
-        if (category) {
-          query.category = category;
-        }
+    // Build filter object
+    const filter = {};
 
-        // Filter by price range
-        if (minPrice || maxPrice) {
-          query.price = {};
-          if (minPrice) query.price.$gte = parseFloat(minPrice);
-          if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-        }
+    // Search filter - searches in title, description, and skills
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { skills: { $regex: search, $options: 'i' } }
+      ];
+    }
 
-        // Filter by deadline range
-        if (minDeadline || maxDeadline) {
-          query.deadline = {};
-          if (minDeadline) query.deadline.$gte = new Date(minDeadline);
-          if (maxDeadline) query.deadline.$lte = new Date(maxDeadline);
-        }
+    // Category filter
+    if (category) {
+      filter.category = category;
+    }
 
-        // Sorting
-        const sortOrder = sort === 'asc' ? 1 : -1;
-        const sortOption = { postedAt: sortOrder };
+    // Location filter
+    if (location) {
+      filter.location = location;
+    }
 
-        // Pagination
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+    // Sort order (by createdAt or posted date)
+    const sortOrder = sort === 'asc' ? 1 : -1;
+    const sortBy = { createdAt: sortOrder };
 
-        const jobs = await jobsCollection
-          .find(query)
-          .sort(sortOption)
-          .skip(skip)
-          .limit(parseInt(limit))
-          .toArray();
+    // Get total count for pagination
+    const total = await jobsCollection.countDocuments(filter);
 
-        const total = await jobsCollection.countDocuments(query);
+    // Get paginated jobs
+    const jobs = await jobsCollection
+      .find(filter)
+      .sort(sortBy)
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
 
-        res.send({
-          jobs,
-          pagination: {
-            total,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: Math.ceil(total / parseInt(limit)),
-          },
-        });
-      } catch (error) {
-        res
-          .status(500)
-          .send({ message: 'Failed to fetch jobs', error: error.message });
-      }
+    res.send({
+      jobs,
+      total,
+      currentPage: pageNum,
+      totalPages: Math.ceil(total / limitNum)
     });
+
+  } catch (error) {
+    console.error('Error fetching jobs:', error);
+    res.status(500).send({ error: 'Failed to fetch jobs' });
+  }
+});
 
     // Get Single Job by ID (Public)
     app.get('/jobs/:id', async (req, res) => {
@@ -313,13 +307,13 @@ async function run() {
       }
     });
 
-    // Get Latest 6 Jobs (For Home Page)
+    // Get Latest 8 Jobs (For Home Page)
     app.get('/latest-jobs', async (req, res) => {
       try {
         const jobs = await jobsCollection
           .find()
           .sort({ postedAt: -1 })
-          .limit(6)
+          .limit(8)
           .toArray();
         res.send(jobs);
       } catch (error) {
