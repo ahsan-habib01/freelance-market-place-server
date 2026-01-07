@@ -347,6 +347,32 @@ app.put('/users/profile/:email', verifyToken, async (req, res) => {
 
 // ==================== JOB ROUTES ====================
 
+// ==================== JOB ROUTES ====================
+
+app.post('/jobs', verifyToken, async (req, res) => {
+  try {
+    const job = req.body;
+    const currentDate = new Date(); // ✅ Define currentDate first
+    
+    // Set timestamps
+    job.postedAt = currentDate;
+    job.createdAt = currentDate;  // ✅ Now uses the defined variable
+    job.userEmail = req.user.email;
+
+    const result = await jobsCollection.insertOne(job);
+    
+    console.log('✅ Job created:', result.insertedId); // Debug log
+    
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Failed to add job:', error); // Debug log
+    res
+      .status(500)
+      .send({ message: 'Failed to add job', error: error.message });
+  }
+});
+
+// GET all jobs with filters
 app.get('/jobs', async (req, res) => {
   try {
     const {
@@ -381,7 +407,7 @@ app.get('/jobs', async (req, res) => {
     }
 
     const sortOrder = sort === 'asc' ? 1 : -1;
-    const sortBy = { postedAt: sortOrder };
+    const sortBy = { postedAt: sortOrder }; // ✅ Sorting by postedAt
 
     const total = await jobsCollection.countDocuments(filter);
 
@@ -404,6 +430,23 @@ app.get('/jobs', async (req, res) => {
   }
 });
 
+// GET latest jobs
+app.get('/latest-jobs', async (req, res) => {
+  try {
+    const jobs = await jobsCollection
+      .find()
+      .sort({ postedAt: -1 }) // ✅ Sorting by postedAt
+      .limit(8)
+      .toArray();
+    res.send(jobs);
+  } catch (error) {
+    res
+      .status(500)
+      .send({ message: 'Failed to fetch latest jobs', error: error.message });
+  }
+});
+
+// GET single job by ID
 app.get('/jobs/:id', async (req, res) => {
   try {
     const id = req.params.id;
@@ -421,21 +464,7 @@ app.get('/jobs/:id', async (req, res) => {
   }
 });
 
-app.get('/latest-jobs', async (req, res) => {
-  try {
-    const jobs = await jobsCollection
-      .find()
-      .sort({ postedAt: -1 })
-      .limit(8)
-      .toArray();
-    res.send(jobs);
-  } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to fetch latest jobs', error: error.message });
-  }
-});
-
+// GET related jobs
 app.get('/jobs/:id/related', async (req, res) => {
   try {
     const id = req.params.id;
@@ -457,22 +486,7 @@ app.get('/jobs/:id/related', async (req, res) => {
   }
 });
 
-app.post('/jobs', verifyToken, async (req, res) => {
-  try {
-    const job = req.body;
-    job.postedAt = new Date();
-    job.createdAt = currentDate;
-    job.userEmail = req.user.email;
-
-    const result = await jobsCollection.insertOne(job);
-    res.send(result);
-  } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to add job', error: error.message });
-  }
-});
-
+// GET user's added jobs
 app.get('/myAddedJobs', verifyToken, async (req, res) => {
   try {
     const email = req.user.email;
@@ -488,6 +502,7 @@ app.get('/myAddedJobs', verifyToken, async (req, res) => {
   }
 });
 
+// UPDATE job
 app.put('/updateJob/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
@@ -516,6 +531,7 @@ app.put('/updateJob/:id', verifyToken, async (req, res) => {
   }
 });
 
+// DELETE job
 app.delete('/deleteJob/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
