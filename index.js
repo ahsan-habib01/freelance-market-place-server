@@ -381,7 +381,7 @@ app.get('/jobs', async (req, res) => {
     }
 
     const sortOrder = sort === 'asc' ? 1 : -1;
-    const sortBy = { createdAt: sortOrder };
+    const sortBy = { postedAt: sortOrder };
 
     const total = await jobsCollection.countDocuments(filter);
 
@@ -461,6 +461,7 @@ app.post('/jobs', verifyToken, async (req, res) => {
   try {
     const job = req.body;
     job.postedAt = new Date();
+    job.createdAt = currentDate;
     job.userEmail = req.user.email;
 
     const result = await jobsCollection.insertOne(job);
