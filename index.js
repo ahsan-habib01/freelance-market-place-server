@@ -345,34 +345,62 @@ app.put('/users/profile/:email', verifyToken, async (req, res) => {
   }
 });
 
-// ==================== JOB ROUTES ====================
 
 // ==================== JOB ROUTES ====================
 
+// ==================== JOB ROUTES ====================
+
+// CREATE JOB (POST)
 app.post('/jobs', verifyToken, async (req, res) => {
   try {
-    const job = req.body;
-    const currentDate = new Date(); // ✅ Define currentDate first
+    const jobData = req.body;
     
-    // Set timestamps
-    job.postedAt = currentDate;
-    job.createdAt = currentDate;  // ✅ Now uses the defined variable
-    job.userEmail = req.user.email;
+    // ✅ Server-side validation
+    if (!jobData.title || !jobData.category || !jobData.description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title, category, and description are required'
+      });
+    }
 
-    const result = await jobsCollection.insertOne(job);
+    // ✅ Set server-controlled fields
+    const now = new Date();
+    jobData.postedAt = now;
+    jobData.createdAt = now;
+    jobData.userEmail = req.user.email;
+    jobData.userName = req.user.name || 'Anonymous';
     
-    console.log('✅ Job created:', result.insertedId); // Debug log
+    // ✅ Ensure default values
+    jobData.status = jobData.status || 'open';
+    jobData.applicants = jobData.applicants || 0;
+
+    console.log('📝 Creating job:', {
+      title: jobData.title,
+      email: jobData.userEmail,
+      postedAt: jobData.postedAt
+    });
+
+    const result = await jobsCollection.insertOne(jobData);
     
-    res.send(result);
+    console.log('✅ Job created successfully:', result.insertedId);
+    
+    return res.status(201).json({
+      success: true,
+      message: 'Job posted successfully',
+      insertedId: result.insertedId,
+      data: result
+    });
   } catch (error) {
-    console.error('❌ Failed to add job:', error); // Debug log
-    res
-      .status(500)
-      .send({ message: 'Failed to add job', error: error.message });
+    console.error('❌ Failed to create job:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create job',
+      error: error.message
+    });
   }
 });
 
-// GET all jobs with filters
+// GET ALL JOBS (with filters, pagination, search)
 app.get('/jobs', async (req, res) => {
   try {
     const {
@@ -388,6 +416,7 @@ app.get('/jobs', async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    // ✅ Build filter object
     const filter = {};
 
     if (search) {
@@ -403,72 +432,103 @@ app.get('/jobs', async (req, res) => {
     }
 
     if (location) {
-      filter.location = location;
+      filter.location = { $regex: location, $options: 'i' };
     }
 
     const sortOrder = sort === 'asc' ? 1 : -1;
-    const sortBy = { postedAt: sortOrder }; // ✅ Sorting by postedAt
 
     const total = await jobsCollection.countDocuments(filter);
 
     const jobs = await jobsCollection
       .find(filter)
-      .sort(sortBy)
+      .sort({ postedAt: sortOrder })
       .skip(skip)
       .limit(limitNum)
       .toArray();
 
-    res.send({
+    res.status(200).json({
+      success: true,
       jobs,
       total,
       currentPage: pageNum,
       totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
-    console.error('Error fetching jobs:', error);
-    res.status(500).send({ error: 'Failed to fetch jobs' });
+    console.error('❌ Error fetching jobs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch jobs',
+      error: error.message
+    });
   }
 });
 
-// GET latest jobs
+// GET LATEST JOBS (Top 8 most recent)
 app.get('/latest-jobs', async (req, res) => {
   try {
     const jobs = await jobsCollection
       .find()
-      .sort({ postedAt: -1 }) // ✅ Sorting by postedAt
+      .sort({ postedAt: -1 }) // ✅ Most recent first
       .limit(8)
       .toArray();
-    res.send(jobs);
+    
+    console.log(`✅ Fetched ${jobs.length} latest jobs`);
+    
+    res.status(200).json(jobs);
   } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to fetch latest jobs', error: error.message });
+    console.error('❌ Failed to fetch latest jobs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch latest jobs',
+      error: error.message
+    });
   }
 });
 
-// GET single job by ID
+// GET SINGLE JOB BY ID
 app.get('/jobs/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid job ID'
+      });
+    }
+
+    const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    res.status(200).json(job);
+  } catch (error) {
+    console.error('❌ Failed to fetch job:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch job',
+      error: error.message
+    });
+  }
+});
+
+// GET RELATED JOBS
+app.get('/jobs/:id/related', async (req, res) => {
   try {
     const id = req.params.id;
     const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
 
     if (!job) {
-      return res.status(404).send({ message: 'Job not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
     }
-
-    res.send(job);
-  } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to fetch job', error: error.message });
-  }
-});
-
-// GET related jobs
-app.get('/jobs/:id/related', async (req, res) => {
-  try {
-    const id = req.params.id;
-    const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
 
     const relatedJobs = await jobsCollection
       .find({
@@ -478,15 +538,17 @@ app.get('/jobs/:id/related', async (req, res) => {
       .limit(4)
       .toArray();
 
-    res.send(relatedJobs);
+    res.status(200).json(relatedJobs);
   } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to fetch related jobs', error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch related jobs',
+      error: error.message
+    });
   }
 });
 
-// GET user's added jobs
+// GET USER'S POSTED JOBS
 app.get('/myAddedJobs', verifyToken, async (req, res) => {
   try {
     const email = req.user.email;
@@ -494,28 +556,56 @@ app.get('/myAddedJobs', verifyToken, async (req, res) => {
       .find({ userEmail: email })
       .sort({ postedAt: -1 })
       .toArray();
-    res.send(jobs);
+    
+    console.log(`✅ Fetched ${jobs.length} jobs for user: ${email}`);
+    
+    res.status(200).json(jobs);
   } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to fetch jobs', error: error.message });
+    console.error('❌ Failed to fetch user jobs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your jobs',
+      error: error.message
+    });
   }
 });
 
-// UPDATE job
+// UPDATE JOB
 app.put('/updateJob/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const updatedJob = req.body;
 
-    const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
-    if (job.userEmail !== req.user.email && req.user.role !== 'admin') {
-      return res
-        .status(403)
-        .send({ message: 'You can only update your own jobs' });
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid job ID'
+      });
     }
 
+    const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    // ✅ Authorization check
+    if (job.userEmail !== req.user.email && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update your own jobs'
+      });
+    }
+
+    // ✅ Prevent updating protected fields
     delete updatedJob._id;
+    delete updatedJob.userEmail;
+    delete updatedJob.postedAt;
+    delete updatedJob.createdAt;
+    
     updatedJob.updatedAt = new Date();
 
     const result = await jobsCollection.updateOne(
@@ -523,32 +613,64 @@ app.put('/updateJob/:id', verifyToken, async (req, res) => {
       { $set: updatedJob }
     );
 
-    res.send(result);
+    res.status(200).json({
+      success: true,
+      message: 'Job updated successfully',
+      data: result
+    });
   } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to update job', error: error.message });
+    console.error('❌ Failed to update job:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update job',
+      error: error.message
+    });
   }
 });
 
-// DELETE job
+// DELETE JOB
 app.delete('/deleteJob/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid job ID'
+      });
+    }
+
     const job = await jobsCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    // ✅ Authorization check
     if (job.userEmail !== req.user.email && req.user.role !== 'admin') {
-      return res
-        .status(403)
-        .send({ message: 'You can only delete your own jobs' });
+      return res.status(403).json({
+        success: false,
+        message: 'You can only delete your own jobs'
+      });
     }
 
     const result = await jobsCollection.deleteOne({ _id: new ObjectId(id) });
-    res.send(result);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Job deleted successfully',
+      data: result
+    });
   } catch (error) {
-    res
-      .status(500)
-      .send({ message: 'Failed to delete job', error: error.message });
+    console.error('❌ Failed to delete job:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete job',
+      error: error.message
+    });
   }
 });
 
